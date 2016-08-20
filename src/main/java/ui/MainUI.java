@@ -6,6 +6,8 @@ package ui;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.BufferedReader;
@@ -25,8 +27,12 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
+import javax.swing.ListSelectionModel;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,12 +50,18 @@ public class MainUI
     private static final Logger LOGGER = LoggerFactory.getLogger(MainUI.class);
 
     private static final String HISTORY_PATH = "data/history.dat";
+    /** 空格是为了排版占位的*/
+    private static final String HISTORY_TITLE = "history                     ";
 
     private JFrame frame;
+    
+//    private JPanel optionPanel;
 
     private JPanel btnPanel;
 
     private JPanel historyPanel;
+    
+    private JScrollPane listScroPanel;
 
     private JList<Record> jList;
 
@@ -63,7 +75,7 @@ public class MainUI
 
     private QRCanvas canvas;
 
-    private DefaultListModel<Record> historyList = new DefaultListModel<Record>();
+    private DefaultListModel<Record> historyListModel = new DefaultListModel<Record>();
 
     public MainUI()
     {
@@ -106,12 +118,76 @@ public class MainUI
 
         frame.getContentPane().add(historyPanel, BorderLayout.WEST);
 
-        jList = new JList<Record>(historyList);
+        jList = new JList<Record>(historyListModel);
+        jList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        jList.addListSelectionListener(new ListSelectionListener()
+        {
+
+            @Override
+            public void valueChanged(ListSelectionEvent event)
+            {
+                if (!event.getValueIsAdjusting())
+                { // 做过滤，总共会报两次事件，只要取停止选取的那次就行了.
+                    int index = jList.getSelectedIndex();
+                    if (index == -1)
+                    {
+                        LOGGER.debug("select nothing.");
+                        return;
+                    }
+
+                    Record record = historyListModel.getElementAt(index);
+                    if (record == null)
+                    {
+                        LOGGER.error("cloud get the record,the index is {}.", index);
+                        return;
+                    }
+
+                    textArea.setText(record.getStr());
+                }
+            }
+        });
+        jList.addKeyListener(new KeyListener()
+        {
+            
+            @Override
+            public void keyTyped(KeyEvent e)
+            {
+            }
+            
+            @Override
+            public void keyReleased(KeyEvent e)
+            {
+            }
+            
+            @Override
+            public void keyPressed(KeyEvent e)
+            {
+                if (e.getKeyCode() == KeyEvent.VK_DELETE) 
+                {
+                    int index = jList.getSelectedIndex();
+                    if (index == -1)
+                    {
+                        LOGGER.debug("no item has been selected!");
+                        return;
+                    }
+
+                    removeRecordByIndex(index);
+                }
+            }
+        });
+        
+        listScroPanel = new JScrollPane(jList);
+        
+        
+        // 不知道为毛height填0可以...先这么用
+        
         historyPanel.setLayout(new BorderLayout(0, 0));
-
-        historyPanel.add(new JLabel("history"), BorderLayout.NORTH);
-        historyPanel.add(jList, BorderLayout.CENTER);
-
+        JLabel historyLabel = new JLabel(HISTORY_TITLE);
+        Dimension dimension = historyLabel.getPreferredSize();
+        historyPanel.add(historyLabel, BorderLayout.NORTH);
+        historyPanel.add(listScroPanel, BorderLayout.CENTER);
+        historyPanel.setPreferredSize(new Dimension(dimension.width, 0));
+        
         frame.getContentPane().add(splitPane, BorderLayout.CENTER);
 
         frame.addWindowListener(new WindowAdapter()
@@ -125,10 +201,8 @@ public class MainUI
             @Override
             public void windowClosing(WindowEvent windowEvent)
             {
-                LOGGER.debug("123");
                 saveToLocal();
                 System.exit(0);
-
             }
         });
 
@@ -150,13 +224,36 @@ public class MainUI
     private void addRecord(String text)
     {
         Record record = new Record(text);
-        addRecord(record);
+        if (recordList.contains(record))
+        {
+            removeRecord(record);
+        }
+        
+        addRecordToHead(record);
+    }
+
+    private void removeRecord(Record record)
+    {
+        recordList.remove(record);
+        historyListModel.removeElement(record);
+    }
+    
+    private void removeRecordByIndex(int index)
+    {
+        recordList.remove(index);
+        historyListModel.remove(index);
+    }
+
+    private void addRecordToHead(Record record)
+    {
+        recordList.add(0, record);
+        historyListModel.insertElementAt(record, 0);
     }
 
     private void addRecord(Record record)
     {
         recordList.add(record);
-        historyList.addElement(record);
+        historyListModel.addElement(record);
     }
 
     private void saveToLocal()
