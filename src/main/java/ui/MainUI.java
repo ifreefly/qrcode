@@ -8,6 +8,8 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.BufferedReader;
@@ -31,8 +33,6 @@ import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.ListSelectionModel;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,17 +50,17 @@ public class MainUI
     private static final Logger LOGGER = LoggerFactory.getLogger(MainUI.class);
 
     private static final String HISTORY_PATH = "data/history.dat";
-    /** 空格是为了排版占位的*/
+    /** 空格是为了排版占位的 */
     private static final String HISTORY_TITLE = "history                     ";
 
     private JFrame frame;
-    
-//    private JPanel optionPanel;
+
+    // private JPanel optionPanel;
 
     private JPanel btnPanel;
 
     private JPanel historyPanel;
-    
+
     private JScrollPane listScroPanel;
 
     private JList<Record> jList;
@@ -120,49 +120,73 @@ public class MainUI
 
         jList = new JList<Record>(historyListModel);
         jList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        jList.addListSelectionListener(new ListSelectionListener()
+
+        jList.addMouseListener(new MouseListener()
         {
+            @Override
+            public void mouseReleased(MouseEvent e)
+            {
+            }
 
             @Override
-            public void valueChanged(ListSelectionEvent event)
+            public void mousePressed(MouseEvent e)
             {
-                if (!event.getValueIsAdjusting())
-                { // 做过滤，总共会报两次事件，只要取停止选取的那次就行了.
-                    int index = jList.getSelectedIndex();
-                    if (index == -1)
-                    {
-                        LOGGER.debug("select nothing.");
-                        return;
-                    }
+            }
 
-                    Record record = historyListModel.getElementAt(index);
-                    if (record == null)
-                    {
-                        LOGGER.error("cloud get the record,the index is {}.", index);
-                        return;
-                    }
+            @Override
+            public void mouseExited(MouseEvent e)
+            {
+            }
 
-                    textArea.setText(record.getStr());
+            @Override
+            public void mouseEntered(MouseEvent e)
+            {
+            }
+
+            @Override
+            public void mouseClicked(MouseEvent e)
+            {
+                if (e.getClickCount() == 2)
+                { // 双击事件
+                    Object object = e.getSource();
+                    if (object instanceof JList)
+                    {
+                        int index = jList.getSelectedIndex();
+                        if (index == -1)
+                        {
+                            LOGGER.debug("select nothing.");
+                            return;
+                        }
+
+                        Record record = historyListModel.getElementAt(index);
+                        if (record == null)
+                        {
+                            LOGGER.error("cloud get the record,the index is {}.", index);
+                            return;
+                        }
+
+                        textArea.setText(record.getStr());
+                    }
                 }
             }
         });
         jList.addKeyListener(new KeyListener()
         {
-            
+
             @Override
             public void keyTyped(KeyEvent e)
             {
             }
-            
+
             @Override
             public void keyReleased(KeyEvent e)
             {
             }
-            
+
             @Override
             public void keyPressed(KeyEvent e)
             {
-                if (e.getKeyCode() == KeyEvent.VK_DELETE) 
+                if (e.getKeyCode() == KeyEvent.VK_DELETE)
                 {
                     int index = jList.getSelectedIndex();
                     if (index == -1)
@@ -175,19 +199,18 @@ public class MainUI
                 }
             }
         });
-        
+
         listScroPanel = new JScrollPane(jList);
-        
-        
+
         // 不知道为毛height填0可以...先这么用
-        
+
         historyPanel.setLayout(new BorderLayout(0, 0));
         JLabel historyLabel = new JLabel(HISTORY_TITLE);
         Dimension dimension = historyLabel.getPreferredSize();
         historyPanel.add(historyLabel, BorderLayout.NORTH);
         historyPanel.add(listScroPanel, BorderLayout.CENTER);
         historyPanel.setPreferredSize(new Dimension(dimension.width, 0));
-        
+
         frame.getContentPane().add(splitPane, BorderLayout.CENTER);
 
         frame.addWindowListener(new WindowAdapter()
@@ -228,7 +251,7 @@ public class MainUI
         {
             removeRecord(record);
         }
-        
+
         addRecordToHead(record);
     }
 
@@ -237,7 +260,7 @@ public class MainUI
         recordList.remove(record);
         historyListModel.removeElement(record);
     }
-    
+
     private void removeRecordByIndex(int index)
     {
         recordList.remove(index);
