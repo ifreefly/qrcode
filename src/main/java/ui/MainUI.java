@@ -6,6 +6,10 @@ package ui;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
@@ -26,14 +30,19 @@ import java.util.List;
 
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
+import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
+import javax.swing.SwingUtilities;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,13 +59,21 @@ public class MainUI
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(MainUI.class);
 
+    private static final String ENCODE = "编码";
+
+    private static final String DECODE = "解码";
+
+    private static final String AUTO_WRAP = "自动换行";
+
+    private static final String AUTO_CLEAN = "自动清除";
+
     private static final String HISTORY_PATH = "data/history.dat";
     /** 空格是为了排版占位的 */
     private static final String HISTORY_TITLE = "history                     ";
 
     private JFrame frame;
 
-    // private JPanel optionPanel;
+    private JPanel optionPanel;
 
     private JPanel btnPanel;
 
@@ -74,7 +91,23 @@ public class MainUI
 
     private JTextArea textArea;
 
+    private JScrollPane textScrollPane;
+
     private QRCanvas canvas;
+
+    private JScrollPane canvasScrollPane;
+
+    private JCheckBox autoWrapBox;
+
+    private JCheckBox autoCleanBox;
+
+    private JTextField cleanField;
+
+    private JPopupMenu listPopMenu;
+
+    private JMenuItem deleteItem;
+
+    private JPopupMenu suggestionMenu;
 
     private DefaultListModel<Record> historyListModel = new DefaultListModel<Record>();
 
@@ -87,9 +120,33 @@ public class MainUI
     {
         frame = new JFrame();
         btnPanel = new JPanel();
-        frame.getContentPane().add(btnPanel, BorderLayout.NORTH);
+        optionPanel = new JPanel();
+        optionPanel.add(btnPanel);
+        autoWrapBox = new JCheckBox(AUTO_WRAP, true);
+        autoWrapBox.addItemListener(new ItemListener()
+        {
+            @Override
+            public void itemStateChanged(ItemEvent e)
+            {
+                if (autoWrapBox.isSelected())
+                {
+                    textArea.setLineWrap(true);
+                } else
+                {
+                    textArea.setLineWrap(false);
+                }
+            }
+        });
 
-        encodeBtn = new JButton("编码");
+        autoCleanBox = new JCheckBox(AUTO_CLEAN, true);
+        cleanField = new JTextField(":", 20);
+
+        optionPanel.add(autoWrapBox);
+        optionPanel.add(autoCleanBox);
+        optionPanel.add(cleanField);
+        frame.getContentPane().add(optionPanel, BorderLayout.NORTH);
+
+        encodeBtn = new JButton(ENCODE);
         btnPanel.add(encodeBtn);
         encodeBtn.addActionListener((e) ->
         {
@@ -100,24 +157,74 @@ public class MainUI
                 return;
             }
 
+            if (needClean())
+            {
+                text = text.replace(cleanField.getText(), "");
+                LOGGER.debug("need auto clean,after clean ,the string is {}.", text);
+            }
+
             addRecord(text);
 
             canvas.drawImage(QRCodeUtil.getInstance().createQRImage(text, canvas.getWidth(), canvas.getHeight()));
         });
 
-        decodeBtn = new JButton("解码");
+        decodeBtn = new JButton(DECODE);
         btnPanel.add(decodeBtn);
 
         JSplitPane splitPane = new JSplitPane();
         textArea = new JTextArea();
+        textArea.setLineWrap(true);
+        textArea.addKeyListener(new KeyListener()
+        {
+
+            @Override
+            public void keyTyped(KeyEvent e)
+            {
+            }
+
+            @Override
+            public void keyReleased(KeyEvent e)
+            {
+            }
+
+            @Override
+            public void keyPressed(KeyEvent e)
+            {
+                if (Character.isLetterOrDigit(e.getKeyChar()))
+                {
+                    showSuggestionList();
+                }
+            }
+        });
+        textScrollPane = new JScrollPane(textArea);
         canvas = new QRCanvas();
-        splitPane.setLeftComponent(textArea);
-        splitPane.setRightComponent(canvas);
+        canvasScrollPane = new JScrollPane(canvas);
+        splitPane.setLeftComponent(textScrollPane);
+        splitPane.setRightComponent(canvasScrollPane);
         splitPane.setResizeWeight(0.5);
 
         historyPanel = new JPanel();
 
         frame.getContentPane().add(historyPanel, BorderLayout.WEST);
+
+        listPopMenu = new JPopupMenu();
+        deleteItem = new JMenuItem("delete");
+        deleteItem.addActionListener(new ActionListener()
+        {
+            @Override
+            public void actionPerformed(ActionEvent e)
+            {
+                int index = jList.getSelectedIndex();
+                if (index < 0)
+                {
+                    LOGGER.debug("no recrods has been choosen.");
+                    return;
+                }
+
+                removeRecordByIndex(index);
+            }
+        });
+        listPopMenu.add(deleteItem);
 
         jList = new JList<Record>(historyListModel);
         jList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -132,6 +239,18 @@ public class MainUI
             @Override
             public void mousePressed(MouseEvent e)
             {
+                if (SwingUtilities.isRightMouseButton(e))
+                {
+                    int index = jList.locationToIndex(e.getPoint());
+                    if (index < 0)
+                    {
+                        LOGGER.debug("nothing has been right clicked.");
+                        return;
+                    }
+
+                    jList.setSelectedIndex(index);
+                    listPopMenu.show(jList, e.getX(), e.getY());
+                }
             }
 
             @Override
@@ -191,7 +310,7 @@ public class MainUI
                         LOGGER.debug("hover nothing!");
                         return;
                     }
-                    
+
                     Record record = historyListModel.getElementAt(index);
                     jList.setToolTipText(record.getStr());
                 }
@@ -404,5 +523,28 @@ public class MainUI
                 LOGGER.error("close faield,exception is {}.", e);
             }
         }
+    }
+
+    private boolean needClean()
+    {
+        return autoCleanBox.isSelected();
+    }
+
+    private void showSuggestionList()
+    {
+        SwingUtilities.invokeLater(new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                showSuggestion();
+            }
+        });
+    }
+
+    private void showSuggestion()
+    {
+        // TODO Auto-generated method stub
+
     }
 }
