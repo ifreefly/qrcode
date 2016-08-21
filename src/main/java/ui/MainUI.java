@@ -10,6 +10,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.awt.event.MouseMotionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.BufferedReader;
@@ -151,8 +152,10 @@ public class MainUI
                     Object object = e.getSource();
                     if (object instanceof JList)
                     {
+                        @SuppressWarnings("unchecked")
+                        JList<Record> jList = (JList<Record>) object;
                         int index = jList.getSelectedIndex();
-                        if (index == -1)
+                        if (index < 0)
                         {
                             LOGGER.debug("select nothing.");
                             return;
@@ -170,6 +173,36 @@ public class MainUI
                 }
             }
         });
+
+        jList.addMouseMotionListener(new MouseMotionListener()
+        {
+
+            @Override
+            public void mouseMoved(MouseEvent e)
+            {
+                Object object = e.getSource();
+                if (object instanceof JList)
+                {
+                    @SuppressWarnings("unchecked")
+                    JList<Record> jList = (JList<Record>) e.getSource();
+                    int index = jList.locationToIndex(e.getPoint());
+                    if (index < 0)
+                    {
+                        LOGGER.debug("hover nothing!");
+                        return;
+                    }
+                    
+                    Record record = historyListModel.getElementAt(index);
+                    jList.setToolTipText(record.getStr());
+                }
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent e)
+            {
+            }
+        });
+
         jList.addKeyListener(new KeyListener()
         {
 
@@ -189,7 +222,7 @@ public class MainUI
                 if (e.getKeyCode() == KeyEvent.VK_DELETE)
                 {
                     int index = jList.getSelectedIndex();
-                    if (index == -1)
+                    if (index < 0)
                     {
                         LOGGER.debug("no item has been selected!");
                         return;
