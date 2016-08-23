@@ -6,6 +6,7 @@ package ui;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.Point;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
@@ -26,6 +27,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
 
 import javax.swing.DefaultListModel;
@@ -41,11 +43,15 @@ import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.JViewport;
+import javax.swing.ListModel;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
+import javax.swing.text.BadLocationException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.ls.LSException;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonIOException;
@@ -107,7 +113,7 @@ public class MainUI
 
     private JMenuItem deleteItem;
 
-    private JPopupMenu suggestionMenu;
+    private JPopupMenu sugesstionMenu;
 
     private DefaultListModel<Record> historyListModel = new DefaultListModel<Record>();
 
@@ -180,11 +186,31 @@ public class MainUI
             @Override
             public void keyTyped(KeyEvent e)
             {
+                if (Character.isLetterOrDigit(e.getKeyChar()))
+                {
+                    showSuggestionList();
+                }
             }
 
             @Override
             public void keyReleased(KeyEvent e)
             {
+                if (e.getKeyCode() == KeyEvent.VK_ENTER)
+                {
+                    if (sugesstionMenu.isShowing())
+                    {
+                        JList<Record> jlist = getSuggestList();
+                        int index = jlist.getSelectedIndex();
+                        if (index < 0)
+                        {
+                            LOGGER.debug("no suggestion has been choosed");
+                            return;
+                        }
+
+                        textArea.setText(jlist.getModel().getElementAt(index).getStr());
+                        sugesstionMenu.setVisible(false);
+                    }
+                }
             }
 
             @Override
@@ -193,6 +219,24 @@ public class MainUI
                 if (Character.isLetterOrDigit(e.getKeyChar()))
                 {
                     showSuggestionList();
+                } else if (e.getKeyCode() == KeyEvent.VK_DOWN)
+                {
+                    if (sugesstionMenu.isShowing())
+                    {
+                        JList<Record> jlist = getSuggestList();
+                        int index = Math.min(jlist.getSelectedIndex() + 1, jlist.getModel().getSize() - 1);
+                        jlist.setSelectedIndex(index);
+                        jlist.ensureIndexIsVisible(index);
+                    }
+                } else if (e.getKeyCode() == KeyEvent.VK_UP)
+                {
+                    JList<Record> jlist = getSuggestList();
+                    int index = Math.max(jlist.getSelectedIndex() - 1, 0);
+                    jlist.setSelectedIndex(index);
+                    jlist.ensureIndexIsVisible(index);
+                } else
+                {
+                    hideSuggestion();
                 }
             }
         });
@@ -354,13 +398,12 @@ public class MainUI
 
         listScroPanel = new JScrollPane(jList);
 
-        // 不知道为毛height填0可以...先这么用
-
         historyPanel.setLayout(new BorderLayout(0, 0));
         JLabel historyLabel = new JLabel(HISTORY_TITLE);
         Dimension dimension = historyLabel.getPreferredSize();
         historyPanel.add(historyLabel, BorderLayout.NORTH);
         historyPanel.add(listScroPanel, BorderLayout.CENTER);
+        // 不知道为毛height填0可以...先这么用
         historyPanel.setPreferredSize(new Dimension(dimension.width, 0));
 
         frame.getContentPane().add(splitPane, BorderLayout.CENTER);
@@ -537,14 +580,131 @@ public class MainUI
             @Override
             public void run()
             {
+                if (sugesstionMenu == null)
+                {
+                    sugesstionMenu = createSuggestionMenu();
+                }
+
                 showSuggestion();
             }
+
         });
     }
 
     private void showSuggestion()
     {
-        // TODO Auto-generated method stub
+        Point location = null;
 
+        String text = textArea.getText();
+        if (text == null || "".equals(text))
+        {
+            LOGGER.debug("textArea is null");
+            return;
+        }
+
+        JList<Record> suggestionList = getSuggestList();
+        DefaultListModel<Record> listModel = (DefaultListModel<Record>) suggestionList.getModel();
+        if (sugesstionMenu.isShowing() && listModel.size() != 0)
+        {
+            for (int i = listModel.getSize() - 1; i >= 0; i--)
+            {
+                Record record = listModel.getElementAt(i);
+                if (!record.getStr().startsWith(text))
+                {
+                    listModel.removeElementAt(i);
+                }
+            }
+        } else
+        {
+            hideSuggestion();
+            for (Record record : recordList)
+            {
+                if (record.getStr().startsWith(text))
+                {
+                    listModel.addElement(record);
+                }
+            }
+
+            int position = textArea.getCaretPosition();
+            try
+            {
+                location = textArea.modelToView(position).getLocation();
+            } catch (BadLocationException e)
+            {
+                LOGGER.error("BadLocationException, exception is {}.", e);
+                return;
+            }
+
+            if (location == null)
+            {
+                LOGGER.error("location is null!");
+                return;
+            }
+        }
+
+        if (listModel.size() <= 0)
+        {
+            LOGGER.debug("records not found.");
+            sugesstionMenu.setVisible(false);
+            return;
+        }
+
+        if (!sugesstionMenu.isShowing())
+        {
+            if (location == null)
+            {
+                LOGGER.debug("could not get the location0");
+                return;
+            }
+
+            sugesstionMenu.show(textArea, location.x, textArea.getBaseline(0, 0));
+            SwingUtilities.invokeLater(new Runnable()
+            {
+                @Override
+                public void run()
+                {
+                    textArea.requestFocusInWindow();
+                }
+            });
+        }
     }
+
+    private void hideSuggestion()
+    {
+        if (sugesstionMenu.isShowing())
+        {
+            sugesstionMenu.setVisible(false);
+            JList<Record> jList = getSuggestList();
+            jList.setSelectedIndex(-1);
+            ((DefaultListModel<Record>) jList.getModel()).removeAllElements();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private JList<Record> getSuggestList()
+    {
+        if (sugesstionMenu != null)
+        {
+            JScrollPane scrollPane = (JScrollPane) sugesstionMenu.getComponent(0);
+            JViewport viewport = (JViewport) scrollPane.getComponent(0);
+            return (JList<Record>) viewport.getComponent(0);
+        }
+
+        // 减少判空
+        return new JList<Record>();
+    }
+
+    private JPopupMenu createSuggestionMenu()
+    {
+        JPopupMenu sugesstionMenu = new JPopupMenu();
+        sugesstionMenu.setPreferredSize(new Dimension(textArea.getWidth() / 2, textArea.getHeight() / 2));
+        JList<Record> sugesstionList = new JList<Record>(new DefaultListModel<>());
+        JScrollPane suggestionScrollPane = new JScrollPane(sugesstionList);
+        sugesstionMenu.add(suggestionScrollPane);
+
+        return sugesstionMenu;
+        // sugesstionMenu.show(textArea, location.x, textArea.getBaseline(0, 0)
+        // + location.y);
+    }
+
 }

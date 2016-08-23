@@ -15,7 +15,7 @@ public class Record
     @Override
     public String toString()
     {
-        return "Record [str=" + str + "]";
+        return str;
     }
 
     public Record(String str)
