@@ -27,7 +27,6 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Enumeration;
 import java.util.List;
 
 import javax.swing.DefaultListModel;
@@ -44,14 +43,12 @@ import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JViewport;
-import javax.swing.ListModel;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
 import javax.swing.text.BadLocationException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.w3c.dom.ls.LSException;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonIOException;
@@ -72,6 +69,8 @@ public class MainUI
     private static final String AUTO_WRAP = "自动换行";
 
     private static final String AUTO_CLEAN = "自动清除";
+
+    private static final String AUTO_COMPLETE = "开启联想";
 
     private static final String HISTORY_PATH = "data/history.dat";
     /** 空格是为了排版占位的 */
@@ -104,6 +103,8 @@ public class MainUI
     private JScrollPane canvasScrollPane;
 
     private JCheckBox autoWrapBox;
+
+    private JCheckBox autoCompleteBox;
 
     private JCheckBox autoCleanBox;
 
@@ -144,10 +145,24 @@ public class MainUI
             }
         });
 
+        autoCompleteBox = new JCheckBox(AUTO_COMPLETE, false);
+        autoCompleteBox.addItemListener(new ItemListener()
+        {
+            @Override
+            public void itemStateChanged(ItemEvent e)
+            {
+                if (!autoWrapBox.isSelected())
+                {
+                    hideSuggestion();
+                }
+            }
+        });
+
         autoCleanBox = new JCheckBox(AUTO_CLEAN, true);
         cleanField = new JTextField(":", 20);
 
         optionPanel.add(autoWrapBox);
+        optionPanel.add(autoCompleteBox);
         optionPanel.add(autoCleanBox);
         optionPanel.add(cleanField);
         frame.getContentPane().add(optionPanel, BorderLayout.NORTH);
@@ -188,16 +203,36 @@ public class MainUI
             {
                 if (Character.isLetterOrDigit(e.getKeyChar()))
                 {
-                    showSuggestionList();
+                    if (autoCompleteBox.isSelected())
+                    {
+                        showSuggestionList();
+                    }
                 }
             }
 
             @Override
             public void keyReleased(KeyEvent e)
             {
-                if (e.getKeyCode() == KeyEvent.VK_ENTER)
+            }
+
+            @Override
+            public void keyPressed(KeyEvent e)
+            {
+                if (sugesstionMenu != null)
                 {
-                    if (sugesstionMenu.isShowing())
+                    if (e.getKeyCode() == KeyEvent.VK_DOWN)
+                    {
+                        JList<Record> jlist = getSuggestList();
+                        int index = Math.min(jlist.getSelectedIndex() + 1, jlist.getModel().getSize() - 1);
+                        jlist.setSelectedIndex(index);
+                        jlist.ensureIndexIsVisible(index);
+                    } else if (e.getKeyCode() == KeyEvent.VK_UP)
+                    {
+                        JList<Record> jlist = getSuggestList();
+                        int index = Math.max(jlist.getSelectedIndex() - 1, 0);
+                        jlist.setSelectedIndex(index);
+                        jlist.ensureIndexIsVisible(index);
+                    } else if (e.getKeyCode() == KeyEvent.VK_ENTER)
                     {
                         JList<Record> jlist = getSuggestList();
                         int index = jlist.getSelectedIndex();
@@ -208,36 +243,34 @@ public class MainUI
                         }
 
                         textArea.setText(jlist.getModel().getElementAt(index).getStr());
-                        sugesstionMenu.setVisible(false);
-                    }
-                }
-            }
+                        SwingUtilities.invokeLater(new Runnable()
+                        {
+                            @Override
+                            public void run()
+                            {
+                                try
+                                {
+                                    textArea.getDocument().remove(textArea.getCaretPosition() - 1, 1);
+                                } catch (BadLocationException e)
+                                {
+                                    e.printStackTrace();
+                                }
+                            }
+                        });
 
-            @Override
-            public void keyPressed(KeyEvent e)
-            {
-                if (Character.isLetterOrDigit(e.getKeyChar()))
-                {
-                    showSuggestionList();
-                } else if (e.getKeyCode() == KeyEvent.VK_DOWN)
-                {
-                    if (sugesstionMenu.isShowing())
+                        if (autoCompleteBox.isSelected())
+                        {
+                            hideSuggestion();
+                        }
+                    } else
                     {
-                        JList<Record> jlist = getSuggestList();
-                        int index = Math.min(jlist.getSelectedIndex() + 1, jlist.getModel().getSize() - 1);
-                        jlist.setSelectedIndex(index);
-                        jlist.ensureIndexIsVisible(index);
+                        if (autoCompleteBox.isSelected())
+                        {
+                            hideSuggestion();
+                        }
                     }
-                } else if (e.getKeyCode() == KeyEvent.VK_UP)
-                {
-                    JList<Record> jlist = getSuggestList();
-                    int index = Math.max(jlist.getSelectedIndex() - 1, 0);
-                    jlist.setSelectedIndex(index);
-                    jlist.ensureIndexIsVisible(index);
-                } else
-                {
-                    hideSuggestion();
                 }
+
             }
         });
         textScrollPane = new JScrollPane(textArea);
@@ -604,7 +637,7 @@ public class MainUI
 
         JList<Record> suggestionList = getSuggestList();
         DefaultListModel<Record> listModel = (DefaultListModel<Record>) suggestionList.getModel();
-        if (sugesstionMenu.isShowing() && listModel.size() != 0)
+        if (listModel.size() != 0)
         {
             for (int i = listModel.getSize() - 1; i >= 0; i--)
             {
@@ -640,22 +673,6 @@ public class MainUI
                 LOGGER.error("location is null!");
                 return;
             }
-        }
-
-        if (listModel.size() <= 0)
-        {
-            LOGGER.debug("records not found.");
-            sugesstionMenu.setVisible(false);
-            return;
-        }
-
-        if (!sugesstionMenu.isShowing())
-        {
-            if (location == null)
-            {
-                LOGGER.debug("could not get the location0");
-                return;
-            }
 
             sugesstionMenu.show(textArea, location.x, textArea.getBaseline(0, 0));
             SwingUtilities.invokeLater(new Runnable()
@@ -667,17 +684,26 @@ public class MainUI
                 }
             });
         }
+
+        if (listModel.size() <= 0)
+        {
+            LOGGER.debug("records not found.");
+            hideSuggestion();
+            return;
+        }
     }
 
     private void hideSuggestion()
     {
-        if (sugesstionMenu.isShowing())
+        if (sugesstionMenu == null)
         {
-            sugesstionMenu.setVisible(false);
-            JList<Record> jList = getSuggestList();
-            jList.setSelectedIndex(-1);
-            ((DefaultListModel<Record>) jList.getModel()).removeAllElements();
+            return;
         }
+
+        sugesstionMenu.setVisible(false);
+        JList<Record> jList = getSuggestList();
+        jList.setSelectedIndex(-1);
+        ((DefaultListModel<Record>) jList.getModel()).removeAllElements();
     }
 
     @SuppressWarnings("unchecked")
@@ -699,12 +725,71 @@ public class MainUI
         JPopupMenu sugesstionMenu = new JPopupMenu();
         sugesstionMenu.setPreferredSize(new Dimension(textArea.getWidth() / 2, textArea.getHeight() / 2));
         JList<Record> sugesstionList = new JList<Record>(new DefaultListModel<>());
+        sugesstionList.addMouseListener(new MouseListener()
+        {
+            
+            @Override
+            public void mouseReleased(MouseEvent e)
+            {
+                // TODO Auto-generated method stub
+                
+            }
+            
+            @Override
+            public void mousePressed(MouseEvent e)
+            {
+                // TODO Auto-generated method stub
+                
+            }
+            
+            @Override
+            public void mouseExited(MouseEvent e)
+            {
+                // TODO Auto-generated method stub
+                
+            }
+            
+            @Override
+            public void mouseEntered(MouseEvent e)
+            {
+                // TODO Auto-generated method stub
+                
+            }
+            
+            @Override
+            public void mouseClicked(MouseEvent e)
+            {
+                if (e.getClickCount() == 2)
+                { // 双击事件
+                    Object object = e.getSource();
+                    if (object instanceof JList)
+                    {
+                        @SuppressWarnings("unchecked")
+                        JList<Record> jList = (JList<Record>) object;
+                        int index = jList.getSelectedIndex();
+                        if (index < 0)
+                        {
+                            LOGGER.debug("select nothing.");
+                            return;
+                        }
+
+                        Record record = jList.getModel().getElementAt(index);
+                        if (record == null)
+                        {
+                            LOGGER.error("cloud get the record,the index is {}.", index);
+                            return;
+                        }
+
+                        textArea.setText(record.getStr());
+                        hideSuggestion();
+                    }
+                }
+            }
+        });
         JScrollPane suggestionScrollPane = new JScrollPane(sugesstionList);
         sugesstionMenu.add(suggestionScrollPane);
 
         return sugesstionMenu;
-        // sugesstionMenu.show(textArea, location.x, textArea.getBaseline(0, 0)
-        // + location.y);
     }
 
 }
